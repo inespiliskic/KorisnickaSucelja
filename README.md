@@ -29,7 +29,7 @@
 
 ### Semester Assignments
 
-- Link to Assignment 1: [**Assignment 1**](https://app.animaker.com/video/3CQVITPEYT362ZSG) 
+- Link to Assignment 1: [**Idea Pitch**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/IdeaPitch.md) 
 
 ---
 
