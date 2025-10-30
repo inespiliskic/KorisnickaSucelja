@@ -29,7 +29,8 @@
 
 ### Semester Assignments
 
-- Link to Assignment 1: [**Idea Pitch**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/IdeaPitch.md) 
+- Link to Assignment 1: [**Idea Pitch**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/IdeaPitch.md)
+-  Link to Assignment 2: [**User Personas**]() 
 
 ---
 
