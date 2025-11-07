@@ -24,14 +24,14 @@
 
 ### Semester Project
 
-- Link to your production version: [**Production Version**](URL_TO_PRODUCTION_VERSION) 
+- Link to your production version: [**Production Version**](https://korisnicka-sucelja-ebon.vercel.app/) 
 - Link to your final report: [**Final Report**](URL_TO_FINAL_REPORT) 
 
 ### Semester Assignments
 
 - Link to Assignment 1: [**Idea Pitch**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/IdeaPitch.md)
 -  Link to Assignment 2: [**User Personas**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/UserPersonas.docx) 
-
+-  Link to Assignment 3: [**Next.js - Deploying Application**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment3/cointracker) 
 ---
 
 ## Project Overview
