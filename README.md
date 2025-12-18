@@ -34,7 +34,7 @@
 -  Link to Assignment 3: [**Next.js - Deploying Application**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment3/cointracker)
 -  Link to Assignment 4: [**High-Fidelity Prototype**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/High-fidelityPrototype)
 -  Link to Assignment 5: [**Next.js - Dynamic routes, data fetching**]
-(https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment5))
+(https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment5)
 ---
 
 ## Project Overview
