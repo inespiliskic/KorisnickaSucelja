@@ -2,11 +2,13 @@ import Link from "next/link";
 import { getPosts } from "../lib/jsonplaceholder";
 
 type Props = {
-  searchParams?: { page?: string };
+  searchParams?: Promise<{ page?: string }>;
 };
 
 export default async function ObjaveIndex({ searchParams }: Props) {
-  const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp?.page ?? "1") || 1);
+
   const { posts, totalPages } = await getPosts({ page, pageSize: 10 });
 
   const prevPage = page > 1 ? page - 1 : null;
@@ -34,7 +36,9 @@ export default async function ObjaveIndex({ searchParams }: Props) {
               {post.title}
             </Link>
             <p className="mt-2 text-gray-600">
-              {post.body.length > 120 ? `${post.body.slice(0, 120)}...` : post.body}
+              {post.body.length > 120
+                ? `${post.body.slice(0, 120)}...`
+                : post.body}
             </p>
           </li>
         ))}
