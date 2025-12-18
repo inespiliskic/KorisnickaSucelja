@@ -2,13 +2,14 @@ import Link from "next/link";
 import { getPost, getUser } from "../../lib/jsonplaceholder";
 
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function ObjaveDetalj({ params }: Props) {
-  const id = Number(params.id);
+  const { id } = await params;
+  const numId = Number(id);
 
-  if (!Number.isFinite(id)) {
+  if (!Number.isFinite(numId)) {
     return (
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">Neispravan ID</h2>
@@ -19,7 +20,7 @@ export default async function ObjaveDetalj({ params }: Props) {
     );
   }
 
-  const post = await getPost(id);
+  const post = await getPost(numId);
   const author = await getUser(post.userId);
 
   return (
@@ -37,7 +38,9 @@ export default async function ObjaveDetalj({ params }: Props) {
           Kontakt: <span className="font-medium">{author.email}</span>
         </div>
 
-        <p className="mt-6 whitespace-pre-line leading-7 text-gray-700">{post.body}</p>
+        <p className="mt-6 whitespace-pre-line leading-7 text-gray-700">
+          {post.body}
+        </p>
       </article>
     </div>
   );
