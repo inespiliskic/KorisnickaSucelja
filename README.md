@@ -24,7 +24,8 @@
 
 ### Semester Project
 
-- Link to your production version: [**Production Version**](https://korisnicka-sucelja-8wq7.vercel.app/) 
+- Link to your production version: [**Production Version**](https://korisnicka-sucelja-8wq7.vercel.app/)
+- Link to your latest version: [**Latest Version**](https://korisnicka-sucelja-8wq7.vercel.app/)
 - Link to your final report: [**Final Report**](URL_TO_FINAL_REPORT) 
 
 ### Semester Assignments
