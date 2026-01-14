@@ -18,7 +18,6 @@ const features = [
 const steps = [
   {
     title: "1) Unesi podatke",
-    desc: "Brzo dodaj trošak ili prihod — forma je jednostavna i prilagođena mobitelu.",
   },
   {
     title: "2) Organiziraj po kategorijama",
@@ -310,9 +309,6 @@ export default function HomePage() {
 
               <div className="mt-4 rounded-2xl bg-purple-900/5 p-4 ring-1 ring-purple-900/10">
                 <p className="text-sm font-semibold text-gray-900">Tip</p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Na mobitelu se sve slaže u 1 stupac; na većim ekranima prelazi u 2 stupca.
-                </p>
               </div>
             </div>
           </div>
@@ -323,7 +319,6 @@ export default function HomePage() {
       <section id="testimonials" className="border-t border-gray-100">
         <div className="mx-auto max-w-6xl px-6 py-12 sm:px-8 sm:py-16">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">Iskustva korisnika</h2>
-          <p className="mt-3 text-gray-600">Social proof sekcija kao dio high-fidelity landing dizajna.</p>
 
           <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
             {testimonials.map((t) => (
