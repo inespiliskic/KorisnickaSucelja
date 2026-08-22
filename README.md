@@ -37,7 +37,7 @@
 -  Link to Assignment 4: [**High-Fidelity Prototype**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/High-fidelityPrototype)
 -  Link to Assignment 5: [**Next.js - Dynamic routes, data fetching**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment5 )
 -  Link to Assignent 6: [**Full Responsive Page Coding**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/assignment6 )
--  Link to Assignent 7: [**Project Review**](https://github.com/inespiliskic/KorisnickaSucelja/blob/main/Assignments/Project%20Review%20%E2%80%93%20CoinTracker%20Web%20Application.docx)
+-  Link to Assignent 7: [**Project Review**](https://github.com/inespiliskic/KorisnickaSucelja/tree/main/Assignments/finalAssignment/CoinTrackerFinal)
 
 
 ---
