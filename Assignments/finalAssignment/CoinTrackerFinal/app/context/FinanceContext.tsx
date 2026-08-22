@@ -46,6 +46,8 @@ export type Budget = {
 
 export type ChatMessage = {
   id: number;
+  senderId: string;
+  receiverId: string;
   sender: string;
   text: string;
   createdAt: string;
@@ -57,10 +59,6 @@ type Profile = {
   email: string;
   currency: string;
 };
-
-/* =========================================================
-   CONTEXT TIP
-   ========================================================= */
 
 type FinanceContextValue = {
   transactions: Transaction[];
@@ -119,8 +117,9 @@ type FinanceContextValue = {
   ) => Promise<void>;
 
   sendMessage: (
-    text: string
-  ) => Promise<void>;
+    text: string,
+    receiverId: string
+  ) => Promise<boolean>;
 
   updateProfile: (
     profile: Profile
@@ -151,7 +150,6 @@ const initialProfile: Profile = {
 
 /* =========================================================
    TEČAJEVI
-   1 EUR = određeni iznos druge valute
    ========================================================= */
 
 const currencyRates: Record<string, number> = {
@@ -177,11 +175,13 @@ function convertAmount(
   const toRate =
     currencyRates[to] ?? 1;
 
-  return Math.round(
-    ((value / fromRate) * toRate +
-      Number.EPSILON) *
-      100
-  ) / 100;
+  return (
+    Math.round(
+      ((value / fromRate) * toRate +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
 }
 
 /* =========================================================
@@ -240,7 +240,7 @@ export function FinanceProvider({
     useState<string | null>(null);
 
   /* =======================================================
-     UČITAVANJE PODATAKA IZ SUPABASEA
+     UČITAVANJE PODATAKA
      ======================================================= */
 
   useEffect(() => {
@@ -264,9 +264,7 @@ export function FinanceProvider({
       }
 
       try {
-        /* ---------------------------------------------------
-           PROFILE
-           --------------------------------------------------- */
+        /* PROFILE */
 
         const { data: profileData } =
           await supabase
@@ -277,9 +275,7 @@ export function FinanceProvider({
             .eq("id", user.id)
             .maybeSingle();
 
-        /* ---------------------------------------------------
-           TRANSACTIONS
-           --------------------------------------------------- */
+        /* TRANSACTIONS */
 
         const {
           data: transactionData,
@@ -301,9 +297,7 @@ export function FinanceProvider({
           );
         }
 
-        /* ---------------------------------------------------
-           SAVINGS GOALS
-           --------------------------------------------------- */
+        /* SAVINGS */
 
         const {
           data: savingsData,
@@ -325,9 +319,7 @@ export function FinanceProvider({
           );
         }
 
-        /* ---------------------------------------------------
-           DEBTS
-           --------------------------------------------------- */
+        /* DEBTS */
 
         const {
           data: debtData,
@@ -349,9 +341,7 @@ export function FinanceProvider({
           );
         }
 
-        /* ---------------------------------------------------
-           BUDGETS
-           --------------------------------------------------- */
+        /* BUDGETS */
 
         const {
           data: budgetData,
@@ -373,13 +363,7 @@ export function FinanceProvider({
           );
         }
 
-        /* ---------------------------------------------------
-           MESSAGES
-
-           Trenutno ih samo učitavamo.
-           Slanje poruka ćemo spojiti nakon što
-           uredimo Poruke stranicu i dodavanje korisnika.
-           --------------------------------------------------- */
+        /* MESSAGES */
 
         const {
           data: messageData,
@@ -407,9 +391,7 @@ export function FinanceProvider({
           return;
         }
 
-        /* ---------------------------------------------------
-           POSTAVLJANJE TRANSAKCIJA
-           --------------------------------------------------- */
+        /* TRANSAKCIJE */
 
         setTransactions(
           (transactionData ?? []).map(
@@ -440,9 +422,7 @@ export function FinanceProvider({
           )
         );
 
-        /* ---------------------------------------------------
-           POSTAVLJANJE ŠTEDNJE
-           --------------------------------------------------- */
+        /* ŠTEDNJA */
 
         setSavingsGoals(
           (savingsData ?? []).map(
@@ -460,9 +440,7 @@ export function FinanceProvider({
           )
         );
 
-        /* ---------------------------------------------------
-           POSTAVLJANJE DUGOVA
-           --------------------------------------------------- */
+        /* DUGOVI */
 
         setDebts(
           (debtData ?? []).map(
@@ -475,9 +453,7 @@ export function FinanceProvider({
                 Number(debt.total),
 
               remaining:
-                Number(
-                  debt.remaining
-                ),
+                Number(debt.remaining),
 
               monthly:
                 Number(debt.monthly),
@@ -485,9 +461,7 @@ export function FinanceProvider({
           )
         );
 
-        /* ---------------------------------------------------
-           POSTAVLJANJE BUDŽETA
-           --------------------------------------------------- */
+        /* BUDŽETI */
 
         setBudgets(
           (budgetData ?? []).map(
@@ -503,9 +477,7 @@ export function FinanceProvider({
           )
         );
 
-        /* ---------------------------------------------------
-           POSTAVLJANJE PROFILA
-           --------------------------------------------------- */
+        /* PROFIL */
 
         setProfile({
           name:
@@ -521,13 +493,7 @@ export function FinanceProvider({
             "EUR",
         });
 
-        /* ---------------------------------------------------
-           PORUKE
-
-           Za sada koristimo e-mail pošiljatelja
-           kao prikaz sendera. Detaljnije ćemo ih
-           srediti u sljedećem koraku.
-           --------------------------------------------------- */
+        /* PORUKE */
 
         setMessages(
           (messageData ?? []).map(
@@ -535,6 +501,12 @@ export function FinanceProvider({
               id: Number(
                 message.id
               ),
+
+              senderId:
+                message.sender_id,
+
+              receiverId:
+                message.receiver_id,
 
               sender:
                 message.sender_id ===
@@ -582,6 +554,137 @@ export function FinanceProvider({
 
     return () => {
       cancelled = true;
+    };
+  }, [user, supabase]);
+
+  /* =======================================================
+     REALTIME PORUKE
+     ======================================================= */
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const channel =
+      supabase
+        .channel(
+          `messages-${user.id}`
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+          },
+          async (payload) => {
+            const message =
+              payload.new as {
+                id: number;
+                sender_id: string;
+                receiver_id: string;
+                text: string;
+                created_at: string;
+              };
+
+            if (
+              message.sender_id !==
+                user.id &&
+              message.receiver_id !==
+                user.id
+            ) {
+              return;
+            }
+
+            let senderName =
+              "Korisnik";
+
+            if (
+              message.sender_id ===
+              user.id
+            ) {
+              senderName = "Ja";
+            } else {
+              const { data } =
+                await supabase
+                  .from("profiles")
+                  .select(
+                    "name, email"
+                  )
+                  .eq(
+                    "id",
+                    message.sender_id
+                  )
+                  .maybeSingle();
+
+              senderName =
+                data?.name ??
+                data?.email ??
+                "Korisnik";
+            }
+
+            const newMessage: ChatMessage =
+              {
+                id: Number(
+                  message.id
+                ),
+
+                senderId:
+                  message.sender_id,
+
+                receiverId:
+                  message.receiver_id,
+
+                sender:
+                  senderName,
+
+                text:
+                  message.text,
+
+                createdAt:
+                  new Date(
+                    message.created_at
+                  ).toLocaleTimeString(
+                    "hr-HR",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }
+                  ),
+
+                mine:
+                  message.sender_id ===
+                  user.id,
+              };
+
+            setMessages(
+              (current) => {
+                const exists =
+                  current.some(
+                    (item) =>
+                      item.id ===
+                      newMessage.id
+                  );
+
+                if (exists) {
+                  return current;
+                }
+
+                return [
+                  ...current,
+                  newMessage,
+                ];
+              }
+            );
+          }
+        )
+        .subscribe();
+
+    return () => {
+      supabase.removeChannel(
+        channel
+      );
     };
   }, [user, supabase]);
 
@@ -677,28 +780,24 @@ export function FinanceProvider({
         "Greška kod dodavanja transakcije:",
         error
       );
-
       return;
     }
 
-    const newTransaction: Transaction =
-      {
-        id: Number(data.id),
-        type:
-          data.type as
-            | "income"
-            | "expense",
-        title: data.title,
-        category:
-          data.category,
-        amount:
-          Number(data.amount),
-        date: data.date,
-      };
-
     setTransactions(
       (current) => [
-        newTransaction,
+        {
+          id: Number(data.id),
+          type:
+            data.type as
+              | "income"
+              | "expense",
+          title: data.title,
+          category:
+            data.category,
+          amount:
+            Number(data.amount),
+          date: data.date,
+        },
         ...current,
       ]
     );
@@ -707,6 +806,10 @@ export function FinanceProvider({
   const deleteTransaction = async (
     id: number
   ) => {
+    if (!user) {
+      return;
+    }
+
     const { error } =
       await supabase
         .from("transactions")
@@ -714,7 +817,7 @@ export function FinanceProvider({
         .eq("id", id)
         .eq(
           "user_id",
-          user?.id
+          user.id
         );
 
     if (error) {
@@ -722,7 +825,6 @@ export function FinanceProvider({
         "Greška kod brisanja transakcije:",
         error
       );
-
       return;
     }
 
@@ -773,7 +875,6 @@ export function FinanceProvider({
         "Greška kod dodavanja cilja štednje:",
         error
       );
-
       return;
     }
 
@@ -787,7 +888,6 @@ export function FinanceProvider({
           saved:
             Number(data.saved),
         },
-
         ...current,
       ]
     );
@@ -797,6 +897,10 @@ export function FinanceProvider({
     id: number,
     amount: number
   ) => {
+    if (!user) {
+      return;
+    }
+
     const goal =
       savingsGoals.find(
         (item) =>
@@ -821,7 +925,7 @@ export function FinanceProvider({
         .eq("id", id)
         .eq(
           "user_id",
-          user?.id
+          user.id
         );
 
     if (error) {
@@ -829,7 +933,6 @@ export function FinanceProvider({
         "Greška kod uplate u štednju:",
         error
       );
-
       return;
     }
 
@@ -840,7 +943,8 @@ export function FinanceProvider({
             item.id === id
               ? {
                   ...item,
-                  saved: newSaved,
+                  saved:
+                    newSaved,
                 }
               : item
         )
@@ -849,6 +953,10 @@ export function FinanceProvider({
 
   const deleteSavingsGoal =
     async (id: number) => {
+      if (!user) {
+        return;
+      }
+
       const { error } =
         await supabase
           .from("savings_goals")
@@ -856,7 +964,7 @@ export function FinanceProvider({
           .eq("id", id)
           .eq(
             "user_id",
-            user?.id
+            user.id
           );
 
       if (error) {
@@ -864,7 +972,6 @@ export function FinanceProvider({
           "Greška kod brisanja cilja štednje:",
           error
         );
-
         return;
       }
 
@@ -898,7 +1005,7 @@ export function FinanceProvider({
           remaining:
             debt.remaining,
           monthly:
-            debt.monthly ?? 0,
+            debt.monthly,
         })
         .select(
           "id, name, total, remaining, monthly"
@@ -910,7 +1017,6 @@ export function FinanceProvider({
         "Greška kod dodavanja duga:",
         error
       );
-
       return;
     }
 
@@ -926,68 +1032,63 @@ export function FinanceProvider({
           monthly:
             Number(data.monthly),
         },
-
         ...current,
       ]
     );
   };
 
   const payDebt = async (
-  id: number,
-  amount: number
-) => {
-  if (!user) {
-    return;
-  }
+    id: number,
+    amount: number
+  ) => {
+    if (!user) {
+      return;
+    }
 
-  const debt = debts.find(
-    (item) => item.id === id
-  );
-
-  if (!debt) {
-    return;
-  }
-
-  if (amount <= 0) {
-    return;
-  }
-
-  const actualPayment = Math.min(
-    amount,
-    debt.remaining
-  );
-
-  const newRemaining =
-    Math.max(
-      0,
-      debt.remaining - actualPayment
+    const debt = debts.find(
+      (item) => item.id === id
     );
 
-  /* =====================================================
-     1. AŽURIRAJ DUG
-     ===================================================== */
+    if (!debt || amount <= 0) {
+      return;
+    }
 
-  const { error: debtError } =
-    await supabase
-      .from("debts")
-      .update({
-        remaining: newRemaining,
-      })
-      .eq("id", id)
-      .eq("user_id", user.id);
-
-  if (debtError) {
-    console.error(
-      "Greška kod ažuriranja duga:",
-      debtError
+    const actualPayment = Math.min(
+      amount,
+      debt.remaining
     );
 
-    return;
-  }
+    const newRemaining =
+      Math.max(
+        0,
+        debt.remaining -
+          actualPayment
+      );
 
+    const { error: debtError } =
+      await supabase
+        .from("debts")
+        .update({
+          remaining: newRemaining,
+        })
+        .eq("id", id)
+        .eq(
+          "user_id",
+          user.id
+        );
 
-  const { data: transactionData, error: transactionError } =
-    await supabase
+    if (debtError) {
+      console.error(
+        "Greška kod ažuriranja duga:",
+        debtError
+      );
+      return;
+    }
+
+    const {
+      data: transactionData,
+      error: transactionError,
+    } = await supabase
       .from("transactions")
       .insert({
         user_id: user.id,
@@ -1004,78 +1105,73 @@ export function FinanceProvider({
       )
       .single();
 
-  if (transactionError) {
-    console.error(
-      "Greška kod spremanja otplate kao troška:",
-      transactionError
+    if (transactionError) {
+      console.error(
+        "Greška kod spremanja otplate:",
+        transactionError
+      );
+
+      await supabase
+        .from("debts")
+        .update({
+          remaining:
+            debt.remaining,
+        })
+        .eq("id", id)
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      return;
+    }
+
+    setDebts(
+      (current) =>
+        current.map(
+          (item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  remaining:
+                    newRemaining,
+                }
+              : item
+        )
     );
 
-
-
-    await supabase
-      .from("debts")
-      .update({
-        remaining: debt.remaining,
-      })
-      .eq("id", id)
-      .eq("user_id", user.id);
-
-    return;
-  }
-
-  setDebts(
-    (current) =>
-      current.map(
-        (item) =>
-          item.id === id
-            ? {
-                ...item,
-                remaining:
-                  newRemaining,
-              }
-            : item
-      )
-  );
-
-  /* =====================================================
-     4. DODAJ TROŠAK U APLIKACIJU
-     ===================================================== */
-
-  if (transactionData) {
-    const newTransaction: Transaction = {
-      id: Number(
-        transactionData.id
-      ),
-
-      type: "expense",
-
-      title:
-        transactionData.title,
-
-      category:
-        transactionData.category,
-
-      amount:
-        Number(
-          transactionData.amount
-        ),
-
-      date:
-        transactionData.date,
-    };
-
-    setTransactions(
-      (current) => [
-        newTransaction,
-        ...current,
-      ]
-    );
-  }
-};
+    if (transactionData) {
+      setTransactions(
+        (current) => [
+          {
+            id: Number(
+              transactionData.id
+            ),
+            type: "expense",
+            title:
+              transactionData.title,
+            category:
+              transactionData.category,
+            amount:
+              Number(
+                transactionData.amount
+              ),
+            date:
+              transactionData.date,
+          },
+          ...current,
+        ]
+      );
+    }
+  };
 
   const deleteDebt = async (
     id: number
   ) => {
+    if (!user) {
+      return;
+    }
+
     const { error } =
       await supabase
         .from("debts")
@@ -1083,7 +1179,7 @@ export function FinanceProvider({
         .eq("id", id)
         .eq(
           "user_id",
-          user?.id
+          user.id
         );
 
     if (error) {
@@ -1091,7 +1187,6 @@ export function FinanceProvider({
         "Greška kod brisanja duga:",
         error
       );
-
       return;
     }
 
@@ -1147,7 +1242,6 @@ export function FinanceProvider({
           "Greška kod ažuriranja budžeta:",
           error
         );
-
         return;
       }
 
@@ -1189,7 +1283,6 @@ export function FinanceProvider({
         "Greška kod dodavanja budžeta:",
         error
       );
-
       return;
     }
 
@@ -1213,26 +1306,109 @@ export function FinanceProvider({
      ======================================================= */
 
   const sendMessage = async (
-    text: string
-  ) => {
-    /*
-     * Trenutni UI šalje samo tekst poruke,
-     * ali ne šalje ID primatelja.
-     *
-     * Zato ovu funkciju još ne spremamo
-     * u bazu.
-     *
-     * Poruke ćemo spojiti u sljedećem
-     * koraku zajedno s "Dodaj korisnika".
-     */
-
-    if (!text.trim()) {
-      return;
+    text: string,
+    receiverId: string
+  ): Promise<boolean> => {
+    if (!user) {
+      return false;
     }
 
-    console.log(
-      "Poruke ćemo povezati s korisnicima u sljedećem koraku."
-    );
+    const cleanText =
+      text.trim();
+
+    if (!cleanText) {
+      return false;
+    }
+
+    if (!receiverId) {
+      return false;
+    }
+
+    if (
+      receiverId === user.id
+    ) {
+      console.error(
+        "Ne možete poslati poruku sami sebi."
+      );
+
+      return false;
+    }
+
+    const { data, error } =
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          receiver_id:
+            receiverId,
+          text: cleanText,
+        })
+        .select(
+          "id, sender_id, receiver_id, text, created_at"
+        )
+        .single();
+
+    if (error) {
+      console.error(
+        "Greška kod slanja poruke:",
+        error
+      );
+
+      return false;
+    }
+
+    if (data) {
+      const newMessage: ChatMessage =
+        {
+          id: Number(data.id),
+
+          senderId:
+            data.sender_id,
+
+          receiverId:
+            data.receiver_id,
+
+          sender: "Ja",
+
+          text:
+            data.text,
+
+          createdAt:
+            new Date(
+              data.created_at
+            ).toLocaleTimeString(
+              "hr-HR",
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+              }
+            ),
+
+          mine: true,
+        };
+
+      setMessages(
+        (current) => {
+          const exists =
+            current.some(
+              (message) =>
+                message.id ===
+                newMessage.id
+            );
+
+          if (exists) {
+            return current;
+          }
+
+          return [
+            ...current,
+            newMessage,
+          ];
+        }
+      );
+    }
+
+    return true;
   };
 
   /* =======================================================
@@ -1252,17 +1428,10 @@ export function FinanceProvider({
     const nextCurrency =
       nextProfile.currency;
 
-    /* -------------------------------------------------------
-       Ako se valuta promijenila,
-       preračunavamo postojeće podatke
-       ------------------------------------------------------- */
-
     if (
       nextCurrency !==
       currentCurrency
     ) {
-      /* TRANSAKCIJE */
-
       for (const transaction of transactions) {
         const convertedAmount =
           convertAmount(
@@ -1287,8 +1456,6 @@ export function FinanceProvider({
           );
       }
 
-      /* ŠTEDNJA */
-
       for (const goal of savingsGoals) {
         await supabase
           .from("savings_goals")
@@ -1299,7 +1466,6 @@ export function FinanceProvider({
                 currentCurrency,
                 nextCurrency
               ),
-
             saved:
               convertAmount(
                 goal.saved,
@@ -1317,8 +1483,6 @@ export function FinanceProvider({
           );
       }
 
-      /* DUGOVI */
-
       for (const debt of debts) {
         await supabase
           .from("debts")
@@ -1329,14 +1493,12 @@ export function FinanceProvider({
                 currentCurrency,
                 nextCurrency
               ),
-
             remaining:
               convertAmount(
                 debt.remaining,
                 currentCurrency,
                 nextCurrency
               ),
-
             monthly:
               convertAmount(
                 debt.monthly,
@@ -1354,21 +1516,16 @@ export function FinanceProvider({
           );
       }
 
-      /* BUDŽETI */
-
       for (const budget of budgets) {
-        const convertedLimit =
-          convertAmount(
-            budget.limit,
-            currentCurrency,
-            nextCurrency
-          );
-
         await supabase
           .from("budgets")
           .update({
             limit_amount:
-              convertedLimit,
+              convertAmount(
+                budget.limit,
+                currentCurrency,
+                nextCurrency
+              ),
           })
           .eq(
             "user_id",
@@ -1378,9 +1535,8 @@ export function FinanceProvider({
             "category",
             budget.category
           );
-      }
 
-      /* Ažuriranje lokalnog stanja */
+      }
 
       setTransactions(
         (current) =>
@@ -1467,10 +1623,6 @@ export function FinanceProvider({
       );
     }
 
-    /* -------------------------------------------------------
-       PROFIL
-       ------------------------------------------------------- */
-
     const updatedProfile = {
       name:
         nextProfile.name,
@@ -1520,10 +1672,6 @@ export function FinanceProvider({
     if (!user) {
       return;
     }
-
-    /*
-     * Brisanje se radi iz svih korisnikovih tablica.
-     */
 
     await supabase
       .from("transactions")

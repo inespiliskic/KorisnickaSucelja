@@ -156,9 +156,7 @@ export default function HomePage() {
               </button>
             </form>
 
-            <p className="mt-6 text-center text-xs leading-5 text-gray-400">
-              Podaci za ovaj projekt spremaju se lokalno u vašem pregledniku.
-            </p>
+            
           </div>
         </section>
       </div>

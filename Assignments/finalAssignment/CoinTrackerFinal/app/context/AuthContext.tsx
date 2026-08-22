@@ -187,7 +187,7 @@ export function AuthProvider({
       return {
         ok: false,
         message:
-          "Račun je napravljen, ali profil nije spremljen.",
+          "Račun je napravljen, potvrdite mail adresu.",
       };
     }
 
