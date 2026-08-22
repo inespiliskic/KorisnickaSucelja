@@ -3,19 +3,12 @@
 import {
   FormEvent,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
 import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
 import { createClient } from "../lib/supabase/client";
-
-type Contact = {
-  id: string;
-  name: string;
-  email: string;
-};
 
 export default function PorukePage() {
   const {
@@ -25,10 +18,7 @@ export default function PorukePage() {
 
   const { user } = useAuth();
 
-  const supabase = useMemo(
-    () => createClient(),
-    []
-  );
+  const supabase = createClient();
 
   const [text, setText] =
     useState("");
@@ -36,182 +26,232 @@ export default function PorukePage() {
   const [showAddUser, setShowAddUser] =
     useState(false);
 
-  const [showMessageWindow, setShowMessageWindow] =
-    useState(false);
+  const [
+    showMessageWindow,
+    setShowMessageWindow,
+  ] = useState(false);
 
   const [userEmail, setUserEmail] =
     useState("");
 
   const [selectedUser, setSelectedUser] =
-    useState<Contact | null>(null);
+    useState("");
+
+  const [selectedUserId, setSelectedUserId] =
+    useState("");
 
   const [error, setError] =
     useState("");
 
-  const [success, setSuccess] =
-    useState("");
+  /*
+   * Automatski odaberi zadnjeg korisnika
+   * s kojim postoji razgovor.
+   */
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
 
-  const [searchingUser, setSearchingUser] =
-    useState(false);
+    if (selectedUserId) {
+      return;
+    }
 
-  /* =======================================================
-     TRAŽENJE KORISNIKA
-     ======================================================= */
+    if (messages.length === 0) {
+      return;
+    }
 
+    const lastMessage =
+      messages[messages.length - 1];
+
+    const otherUserId =
+      lastMessage.mine
+        ? lastMessage.receiverId
+        : lastMessage.senderId;
+
+    if (otherUserId) {
+      setSelectedUserId(
+        otherUserId
+      );
+    }
+  }, [
+    messages,
+    selectedUserId,
+    user,
+  ]);
+
+  /*
+   * Pronađi ime/e-mail korisnika
+   * preko njegovog ID-a.
+   */
+  async function loadUserName(
+    userId: string
+  ) {
+    const {
+      data,
+    } = await supabase
+      .from("profiles")
+      .select(
+        "name, email"
+      )
+      .eq(
+        "id",
+        userId
+      )
+      .maybeSingle();
+
+    if (!data) {
+      return;
+    }
+
+    setSelectedUser(
+      data.name ||
+        data.email ||
+        "Korisnik"
+    );
+  }
+
+  /*
+   * Kada se odabere korisnik,
+   * učitaj njegov naziv.
+   */
+  useEffect(() => {
+    if (!selectedUserId) {
+      return;
+    }
+
+    loadUserName(
+      selectedUserId
+    );
+  }, [selectedUserId]);
+
+  /*
+   * Dodavanje korisnika radi se samo
+   * kada prvi put želiš započeti razgovor.
+   */
   async function handleAddUser(
     e: FormEvent
   ) {
     e.preventDefault();
 
     setError("");
-    setSuccess("");
 
-    const cleanEmail =
+    const email =
       userEmail
         .trim()
         .toLowerCase();
 
-    if (!cleanEmail) {
-      setError(
-        "Unesite e-mail korisnika."
-      );
-
+    if (!email) {
       return;
     }
 
     if (!user) {
+      return;
+    }
+
+    if (
+      email ===
+      user.email.toLowerCase()
+    ) {
       setError(
-        "Morate biti prijavljeni."
+        "Ne možete poslati poruku sami sebi."
       );
 
       return;
     }
 
-    setSearchingUser(true);
+    const {
+      data,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select(
+        "id, name, email"
+      )
+      .eq(
+        "email",
+        email
+      )
+      .maybeSingle();
 
-    try {
-      const { data, error } =
-        await supabase
-          .from("profiles")
-          .select(
-            "id, name, email"
-          )
-          .eq(
-            "email",
-            cleanEmail
-          )
-          .maybeSingle();
+    if (profileError) {
+      console.error(
+        profileError
+      );
 
-      if (error) {
-        console.error(
-          "Greška kod traženja korisnika:",
-          error
-        );
+      setError(
+        "Greška kod pronalaska korisnika."
+      );
 
-        setError(
-          "Dogodila se greška pri traženju korisnika."
-        );
-
-        return;
-      }
-
-      if (!data) {
-        setError(
-          "Korisnik s tim e-mailom nije registriran."
-        );
-
-        return;
-      }
-
-      if (data.id === user.id) {
-        setError(
-          "Ne možete odabrati sami sebe."
-        );
-
-        return;
-      }
-
-      setSelectedUser({
-        id: data.id,
-        name:
-          data.name ||
-          "CoinTracker korisnik",
-        email: data.email,
-      });
-
-      setUserEmail("");
-      setShowAddUser(false);
-      setShowMessageWindow(true);
-    } finally {
-      setSearchingUser(false);
+      return;
     }
+
+    if (!data) {
+      setError(
+        "Korisnik s tim e-mailom nije registriran."
+      );
+
+      return;
+    }
+
+    setSelectedUserId(
+      data.id
+    );
+
+    setSelectedUser(
+      data.name ||
+        data.email
+    );
+
+    setUserEmail("");
+
+    setShowAddUser(false);
+
+    setShowMessageWindow(true);
   }
 
-  /* =======================================================
-     SLANJE PORUKE
-     ======================================================= */
-
+  /*
+   * Slanje poruke.
+   */
   async function handleSendMessage(
     e: FormEvent
   ) {
     e.preventDefault();
 
-    setError("");
-    setSuccess("");
-
-    if (!selectedUser) {
-      setError(
-        "Prvo odaberite korisnika."
-      );
-
-      return;
-    }
-
     if (!text.trim()) {
+      return;
+    }
+
+    if (!selectedUserId) {
       setError(
-        "Napišite poruku."
+        "Odaberite korisnika kojem želite poslati poruku."
       );
 
       return;
     }
 
-    const sent =
-      await sendMessage(
-        text.trim(),
-        selectedUser.id
-      );
-
-    if (!sent) {
-      setError(
-        "Poruka nije poslana. Pokušajte ponovno."
-      );
-
-      return;
-    }
-
-    setText("");
-    setShowMessageWindow(false);
-
-    setSuccess(
-      "Poruka je uspješno poslana."
+    await sendMessage(
+      text.trim(),
+      selectedUserId
     );
 
-    setTimeout(() => {
-      setSuccess("");
-    }, 3000);
+    setText("");
+
+    setShowMessageWindow(
+      false
+    );
   }
 
-  /* =======================================================
-     PORUKE TRENUTNOG RAZGOVORA
-     ======================================================= */
-
+  /*
+   * Prikaži samo poruke iz trenutno
+   * odabranog razgovora.
+   */
   const conversationMessages =
-    selectedUser
+    selectedUserId
       ? messages.filter(
           (message) =>
             (
               message.senderId ===
-                selectedUser.id &&
+                selectedUserId &&
               message.receiverId ===
                 user?.id
             ) ||
@@ -219,17 +259,14 @@ export default function PorukePage() {
               message.senderId ===
                 user?.id &&
               message.receiverId ===
-                selectedUser.id
+                selectedUserId
             )
         )
       : [];
 
-  /* =======================================================
-     UI
-     ======================================================= */
-
   return (
     <div className="space-y-8">
+
       {/* HEADER */}
 
       <div>
@@ -246,107 +283,86 @@ export default function PorukePage() {
         </p>
       </div>
 
+
       {/* DODAJ KORISNIKA */}
 
       <div className="flex justify-end">
         <button
-          onClick={() => {
-            setError("");
-            setUserEmail("");
-            setShowAddUser(true);
-          }}
+          onClick={() =>
+            setShowAddUser(true)
+          }
           className="rounded-2xl bg-purple-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-800"
         >
-          + Dodaj korisnika
+          + Nova poruka
         </button>
       </div>
 
-      {/* PORUKA USPJEHA */}
-
-      {success && (
-        <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
-          {success}
-        </div>
-      )}
 
       {/* RAZGOVOR */}
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-gray-100">
+
         {/* HEADER RAZGOVORA */}
 
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+
           <div>
+
             <h2 className="font-semibold text-gray-900">
-              {selectedUser
-                ? selectedUser.name
-                : "Nema odabranog korisnika"}
+              {selectedUser ||
+                "Nema odabranog korisnika"}
             </h2>
 
             {selectedUser && (
-              <p className="mt-1 text-xs text-gray-500">
-                {selectedUser.email}
+              <p className="mt-1 text-xs text-green-600">
+                ● razgovor
               </p>
             )}
 
-            {selectedUser && (
-              <p className="mt-1 text-xs text-green-600">
-                ● razgovor je otvoren
-              </p>
-            )}
           </div>
 
-          {selectedUser && (
-            <button
-              onClick={() =>
-                setSelectedUser(null)
-              }
-              className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-200"
-            >
-              Zatvori razgovor
-            </button>
-          )}
         </div>
+
 
         {/* PORUKE */}
 
         <div className="min-h-[350px] space-y-4 p-6">
-          {!selectedUser ? (
-            <div className="flex min-h-[280px] items-center justify-center text-center">
-              <div>
-                <p className="font-semibold text-gray-900">
-                  Nema odabranog korisnika
-                </p>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Klikni na „Dodaj korisnika” kako bi započeo razgovor.
-                </p>
-              </div>
-            </div>
-          ) : conversationMessages.length ===
-            0 ? (
+          {conversationMessages.length ===
+          0 ? (
+
             <div className="flex min-h-[280px] items-center justify-center text-center">
+
               <div>
+
                 <p className="font-semibold text-gray-900">
                   Još nema poruka
                 </p>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Pošalji prvu poruku korisniku{" "}
-                  {selectedUser.name}.
+                  Klikni na "Nova poruka" kako bi započeo razgovor.
                 </p>
+
               </div>
+
             </div>
+
           ) : (
+
             conversationMessages.map(
               (message) => (
+
                 <div
-                  key={message.id}
+                  key={
+                    message.id
+                  }
                   className={`flex ${
                     message.mine
                       ? "justify-end"
                       : "justify-start"
                   }`}
                 >
+
                   <div
                     className={`max-w-[78%] rounded-2xl px-4 py-3 ${
                       message.mine
@@ -354,11 +370,6 @@ export default function PorukePage() {
                         : "rounded-bl-md bg-gray-50 text-gray-700 ring-1 ring-gray-100"
                     }`}
                   >
-                    {!message.mine && (
-                      <p className="mb-1 text-xs font-semibold text-purple-700">
-                        {message.sender}
-                      </p>
-                    )}
 
                     <p className="text-sm">
                       {message.text}
@@ -373,24 +384,36 @@ export default function PorukePage() {
                     >
                       {message.createdAt}
                     </p>
+
                   </div>
+
                 </div>
+
               )
             )
+
           )}
+
         </div>
+
 
         {/* INPUT */}
 
-        {selectedUser && (
+        {selectedUserId && (
+
           <form
-            onSubmit={handleSendMessage}
+            onSubmit={
+              handleSendMessage
+            }
             className="flex gap-3 border-t border-gray-100 p-4"
           >
+
             <input
               value={text}
               onChange={(e) =>
-                setText(e.target.value)
+                setText(
+                  e.target.value
+                )
               }
               placeholder="Napiši poruku..."
               className="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-purple-300"
@@ -402,26 +425,34 @@ export default function PorukePage() {
             >
               Pošalji
             </button>
+
           </form>
+
         )}
+
       </div>
 
-      {/* ===================================================
-          MODAL - DODAJ KORISNIKA
-          =================================================== */}
+
+      {/* MODAL - NOVA PORUKA */}
 
       {showAddUser && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+
             <div className="flex items-start justify-between">
+
               <div>
+
                 <h2 className="text-xl font-bold text-gray-900">
-                  Dodaj korisnika
+                  Nova poruka
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
                   Unesi e-mail registrirane osobe kojoj želiš poslati poruku.
                 </p>
+
               </div>
 
               <button
@@ -432,142 +463,174 @@ export default function PorukePage() {
               >
                 ×
               </button>
+
             </div>
 
-            {error && (
-              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-                {error}
-              </div>
-            )}
 
             <form
-              onSubmit={handleAddUser}
+              onSubmit={
+                handleAddUser
+              }
               className="mt-6 space-y-4"
             >
+
               <div>
+
                 <label className="text-sm font-semibold text-gray-700">
                   E-mail korisnika
                 </label>
 
                 <input
                   type="email"
-                  value={userEmail}
-                  onChange={(e) => {
+                  value={
+                    userEmail
+                  }
+                  onChange={(e) =>
                     setUserEmail(
                       e.target.value
-                    );
-                    setError("");
-                  }}
+                    )
+                  }
                   placeholder="npr. ana@gmail.com"
                   className="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-purple-300"
                   required
                 />
+
               </div>
+
+
+              {error && (
+
+                <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {error}
+                </p>
+
+              )}
+
 
               <button
                 type="submit"
-                disabled={searchingUser}
-                className="w-full rounded-2xl bg-purple-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-2xl bg-purple-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-800"
               >
-                {searchingUser
-                  ? "Tražim korisnika..."
-                  : "Dodaj korisnika"}
+                Nastavi
               </button>
+
             </form>
+
           </div>
+
         </div>
+
       )}
 
-      {/* ===================================================
-          MODAL - NOVA PORUKA
-          =================================================== */}
 
-      {showMessageWindow &&
-        selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-purple-700">
-                    Nova poruka
-                  </p>
+      {/* MODAL - SLANJE */}
 
-                  <h2 className="mt-1 text-xl font-bold text-gray-900">
-                    Pošalji poruku
-                  </h2>
+      {showMessageWindow && (
 
-                  <p className="mt-1 text-sm text-gray-500">
-                    Primatelj:{" "}
-                    <span className="font-semibold text-gray-700">
-                      {selectedUser.name}
-                    </span>
-                  </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
 
-                  <p className="text-xs text-gray-400">
-                    {selectedUser.email}
-                  </p>
-                </div>
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+
+                <p className="text-sm font-semibold text-purple-700">
+                  Nova poruka
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold text-gray-900">
+                  Pošalji poruku
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+
+                  Primatelj:{" "}
+
+                  <span className="font-semibold text-gray-700">
+                    {selectedUser}
+                  </span>
+
+                </p>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  setShowMessageWindow(
+                    false
+                  )
+                }
+                className="text-xl text-gray-400 hover:text-gray-700"
+              >
+                ×
+              </button>
+
+            </div>
+
+
+            <form
+              onSubmit={
+                handleSendMessage
+              }
+              className="mt-6 space-y-4"
+            >
+
+              <textarea
+                value={text}
+                onChange={(e) =>
+                  setText(
+                    e.target.value
+                  )
+                }
+                placeholder="Napiši poruku..."
+                rows={5}
+                className="w-full resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-purple-300"
+                required
+              />
+
+
+              {error && (
+
+                <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {error}
+                </p>
+
+              )}
+
+
+              <div className="flex gap-3">
 
                 <button
+                  type="button"
                   onClick={() =>
                     setShowMessageWindow(
                       false
                     )
                   }
-                  className="text-xl text-gray-400 hover:text-gray-700"
+                  className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200"
                 >
-                  ×
+                  Odustani
                 </button>
+
+
+                <button
+                  type="submit"
+                  className="flex-1 rounded-2xl bg-purple-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-800"
+                >
+                  Pošalji poruku
+                </button>
+
               </div>
 
-              {error && (
-                <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-                  {error}
-                </div>
-              )}
+            </form>
 
-              <form
-                onSubmit={handleSendMessage}
-                className="mt-6 space-y-4"
-              >
-                <textarea
-                  value={text}
-                  onChange={(e) => {
-                    setText(
-                      e.target.value
-                    );
-                    setError("");
-                  }}
-                  placeholder="Napiši poruku..."
-                  rows={5}
-                  className="w-full resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-purple-300"
-                  required
-                />
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowMessageWindow(
-                        false
-                      )
-                    }
-                    className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200"
-                  >
-                    Odustani
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="flex-1 rounded-2xl bg-purple-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-800"
-                  >
-                    Pošalji poruku
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
-        )}
+
+        </div>
+
+      )}
+
     </div>
   );
 }
